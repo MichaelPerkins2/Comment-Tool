@@ -1,5 +1,7 @@
 console.log("Content script running!");
 
+
+
 // Inject response into the page
 // chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 //   if (request.action === "injectResponse") {

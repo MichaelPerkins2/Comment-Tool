@@ -1,17 +1,32 @@
-
+// Query LLM and send response to popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "queryLLM") {
     console.log("Background script received query:", request.query);
 
     const query = request.query;
+    const chatHistory = request.chatHistory || [];
     const API_KEY = process.env.REACT_APP_API_KEY;
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+
+    const lastMessages = chatHistory.slice(-6); // Last 6 messages
+    const conversationContext = lastMessages
+      .map((msg) => `${msg.role.toUpperCase()}: ${msg.text}`)
+      .join("\n");
+      
+    // Set the conversation context
+    const formattedPrompt = `This is a conversation. Continue it naturally.
+
+      Previous conversation:
+      ${conversationContext}
+      
+      USER: ${query}
+      AI:`;
 
     fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: query }] }],
+        contents: [{ parts: [{ text: formattedPrompt }] }],
       }),
     })
       .then((response) => response.json())
@@ -31,6 +46,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+
+// Clear browser session chat history
+chrome.runtime.onStartup.addListener(() => {
+  console.log("Extension started. Clearing chat history.");
+  chrome.storage.local.set({ chatHistory: [] });
+});
+
 // FOR INJECTION INTO WEBPAGE
 
 //     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {

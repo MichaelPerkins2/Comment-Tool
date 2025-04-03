@@ -4,48 +4,90 @@ const App = () => {
   const [message, setMessage] = useState("");
   const [response, setResponse] = useState("");
   const [query, setQuery] = useState("");
-  const [queryHistory, setQueryHistory] = useState([]);
+  // const [queryHistory, setQueryHistory] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
 
   const handleQuery = () => {
-    chrome.runtime.sendMessage(
-      { action: "queryLLM", query },
-      (response) => {
-        console.log("Response received:", response);
+    if (!query.trim()) return;
 
-        if (chrome.runtime.lastError) {
-          console.error("Error:", chrome.runtime.lastError.message);
-          // setMessage("Error: " + chrome.runtime.lastError.message);
-          return;
-        }
+    const newUserMessage = { role: "user", text: query };
+    console.log("New user message:", newUserMessage);
 
-        if (response.success) {
-          console.log("Success:", response.response);
-          setQueryHistory((prev) => [
-            ...prev,
-            { query, response: response.response },
-          ]);
-          setQuery("");
-        } else {
-          console.error("Error:", error);
-        }
+    chrome.runtime.sendMessage({ action: "queryLLM", query, chatHistory: chatHistory }, (response) => {
+      console.log("Response received:", response);
+
+      if (chrome.runtime.lastError) {
+        console.error("Error:", chrome.runtime.lastError.message);
+        setMessage("Error: " + chrome.runtime.lastError.message);
+        return;
       }
-    );
+
+      if (!response || !response.success) {
+        console.error("Error fetching response:", response.error);
+        setMessage("Error: " + response.error);
+        return;
+      }
+
+      if (response.success) {
+        console.log("Success:", response.response);
+
+        const newAiMessage = { role: "ai", text: response.response };
+        setChatHistory((prevHistory) => {
+          const updatedHistory = [...prevHistory, newUserMessage, newAiMessage];
+          // const updatedHistory = [...chatHistory, newUserMessage, newAiMessage];
+          // setChatHistory(updatedHistory);
+          chrome.storage.local.set({ chatHistory: updatedHistory });
+          return updatedHistory;
+        });
+
+        // setQueryHistory((prev) => [
+        //   ...prev,
+        //   { query, response: response.response },
+        // ]);
+        setQuery("");
+      } else {
+        console.error("Error:", error);
+      }
+    });
   };
 
+  // Listen for messages from the background script - receive LLM response
   useEffect(() => {
     const listener = (message) => {
       if (message.action === "displayResponse") {
         setResponse(message.text);
       }
     };
-
     chrome.runtime.onMessage.addListener(listener);
-
     return () => {
       chrome.runtime.onMessage.removeListener(listener);
     };
   }, []);
 
+  // Load chat history when extension opens -- persistence
+  useEffect(() => {
+    chrome.storage.local.get("chatHistory", (data) => {
+      if (data.chatHistory) {
+        setChatHistory(data.chatHistory);
+      }
+    });
+  }, []);
+
+  // Clear chat history on page reload -- see background script
+  // useEffect(() => {
+  //   const handleUnload = () => {
+  //     chrome.storage.local.remove("chatHistory", () => {
+  //       console.log("Chat history cleared.");
+  //     });
+  //   };
+
+  //   window.addEventListener("beforeunload", handleUnload);
+  //   return () => {
+  //     window.removeEventListener("beforeunload", handleUnload);
+  //   };
+  // }, []);
+
+  // Popup format
   return (
     <div
       style={{
@@ -56,10 +98,43 @@ const App = () => {
         backgroundColor: "#101010",
       }}
     >
+    {/* Title */}
       <h1 style={{ fontSize: "20px", marginBottom: "10px" }}>Comment Tool</h1>
-      <h3 style={{ fontSize: "16px", marginBottom: "15px" }}>
+      <h3 style={{ fontSize: "15px", marginBottom: "15px" }}>
         Search the comments for answers to your questions
       </h3>
+
+      {/* Conversation */}
+      <div
+        className="conversation-container"
+        style={{
+          marginTop: "20px",
+          padding: "10px",
+          backgroundColor: "#181818",
+          borderRadius: "6px",
+        }}
+      >
+        {chatHistory.map((entry, index) => (
+          <div key={index}>
+            <p
+              style={{
+                textAlign: entry.role === "user" ? "right" : "left",
+                width: "fit-content",
+                maxWidth: "80%",
+                borderRadius: "6px",
+                backgroundColor: "#262626",
+                padding: "0.75em",
+                marginLeft: entry.role === "user" ? "auto" : "0",
+                display: "block",
+              }}
+            >
+              {entry.text}
+            </p>
+          </div>
+        ))}
+      </div>
+      
+      {/* Input Search Field */}
       <textarea
         placeholder="Search comments..."
         required
@@ -78,11 +153,13 @@ const App = () => {
           margin: "1em auto",
           resize: "none",
           overflow: "hidden",
-          height: "auto",
-          minHeight: "40px",
+          height: "1em",
+          minHeight: "1em",
         }}
         onInput={(e) => {
-          e.target.style.height = "auto";
+          if (e.target.scrollHeight > 0) {
+            e.target.style.height = "auto";
+          }
           e.target.style.height = `${e.target.scrollHeight}px`;
         }}
       />
@@ -108,6 +185,24 @@ const App = () => {
       >
         Search
       </button>
+
+      {/* Clear History Button */}
+      <button style={{ 
+          width: "30%",
+          padding: "5px",
+          backgroundColor: "#8b0000",
+          color: "#fff",
+          border: "none",
+          borderRadius: "4px",
+          cursor: "pointer",
+          display: "block",
+          margin: "0.5em auto",
+        }}
+        onClick={() => {
+          chrome.storage.local.remove("chatHistory");
+          setChatHistory([]);
+        }}>Clear History</button>
+
       {message && (
         <p
           style={{
@@ -118,46 +213,6 @@ const App = () => {
           {message}
         </p>
       )}
-
-      {queryHistory.map((entry, index) => (
-        <div
-          key={index}
-          style={{
-            marginTop: "20px",
-            padding: "10px",
-            backgroundColor: "#181818",
-            borderRadius: "4px",
-          }}
-        >
-          <p
-            style={{
-              textAlign: "right",
-              width: "fit-content",
-              maxWidth: "80%",
-              borderRadius: "4px",
-              backgroundColor: "#262626",
-              padding: "0.75em",
-              marginLeft: "auto",
-              display: "block",
-            }}
-          >
-            {entry.query}
-          </p>
-          <p
-            style={{
-              textAlign: "left",
-              width: "fit-content",
-              maxWidth: "80%",
-              borderRadius: "4px",
-              backgroundColor: "#262626",
-              padding: "0.75em",
-              display: "block",
-            }}
-          >
-            {entry.response}
-          </p>
-        </div>
-      ))}
     </div>
   );
 };
