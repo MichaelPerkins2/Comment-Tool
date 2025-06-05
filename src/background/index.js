@@ -1,22 +1,22 @@
 
+let cachedChannel = "";
+let cachedTitle = "";
+let cachedDescription = "";
+let cachedComments = [];
+
 // Query LLM and send response to popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
-  let cachedChannel = "";
-  let cachedTitle = "";
-  let cachedDescription = "";
-  let cachedComments = [];
-
   if (request.action === "sendVideoInfo") {
-    console.log("Background script received video info:", request.channel, request.title, request.description, request.comments);
 
     cachedChannel = request.channel;
     cachedTitle = request.title;
     cachedDescription = request.description;
     cachedComments = request.comments;
 
-  } else if (request.action === "queryLLM") {
-    console.log("Background script received query:", request.query);
+  }
+  
+  if (request.action === "queryLLM") {
 
     const query = request.query;
     const chatHistory = request.chatHistory || [];
@@ -27,6 +27,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const conversationContext = lastMessages
       .map((msg) => `${msg.role.toUpperCase()}: ${msg.text}`)
       .join("\n");
+
+    // Format comments for LLM
+    const formattedComments = cachedComments.map((comment, index) => {
+      return `Comment #${index + 1}:
+      Author: ${comment.author}
+      Text: ${comment.text}
+      Likes: ${comment.likeCount}
+      Date: ${comment.publishedAt}
+      `;
+    }).join("\n");
       
     // Set the conversation context
     const formattedPrompt = `This is a conversation in which your role is to answer questions about comments from a YouTube video for the user with whom you will communicate. If you have not received the comments to analyze, inform the user.
@@ -34,7 +44,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       YouTube video channel: ${cachedChannel}
       Video title: ${cachedTitle}
       Video description: ${cachedDescription}
-      Video comments to analyze: ${cachedComments}
+      Video comments to analyze: ${formattedComments}
 
       Previous conversation:
       ${conversationContext}
@@ -42,36 +52,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       USER: ${query}
       AI (you):`;
 
+    console.log("BACKGROUND: video info", {
+      channel: cachedChannel,
+      title: cachedTitle,
+      description: cachedDescription,
+      comments: formattedComments,
+      conversationContext: conversationContext,
+    })
+
     fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: formattedPrompt }] }],
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: formattedPrompt
+              }
+            ]
+          }
+        ]
       }),
     })
-      .then((response) => response.json())
-      .then((data) => {
-        const llmResponse = data.candidates[0].content.parts[0].text;
-        console.log("From background, LLM Response:", llmResponse);
-
-        sendResponse({ success: true, response: llmResponse });
-      })
-      .catch((error) => {
-        console.error("Error querying LLM:", error);
-        sendResponse({
-          success: false,
-          error: "Error querying LLM: " + error.message,
+    .then((response) => response.json())
+    .then((data) => {
+      console.log("Full API response:", data);
+      
+      if (!data.candidates || !data.candidates.length) {
+        console.error("No candidates in response:", data);
+        sendResponse({ 
+          success: false, 
+          error: data.error.message || "No response from LLM."
         });
-      });
+        return;
+      }
+      
+      const llmResponse = data.candidates[0].content.parts[0].text;
+      sendResponse({ success: true, response: llmResponse });
+    })
     return true;
-  }
-});
-
-// Listen for messages from content script containing comments to send to LLM
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "getComments") {
-    console.log("Background script sending comments to LLM:", request.comments);
-    // TODO: Send comments to LLM for analysis
   }
 });
 
@@ -80,6 +101,14 @@ chrome.runtime.onStartup.addListener(() => {
   console.log("Extension started. Clearing chat history.");
   chrome.storage.local.set({ chatHistory: [] });
 });
+
+// Listen for messages from content script containing comments to send to LLM
+// chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+//   if (request.action === "getComments") {
+//     console.log("Background script sending comments to LLM:", request.comments);
+//     // TODO: Send comments to LLM for analysis
+//   }
+// });
 
 // FOR INJECTION INTO WEBPAGE
 

@@ -7,15 +7,14 @@ window.addEventListener("load", () => {
 function getVideoData() {
   const apiKey = process.env.REACT_APP_YOUTUBE_API_KEY;
   const baseUrl = "https://www.googleapis.com/youtube/v3";
-
   const videoId = new URLSearchParams(window.location.search).get("v");
-  console.log("Video ID:", videoId);
+
   let channel = "";
   let title = "";
   let description = "";
   let comments = [];
 
-  fetch(
+  const videoDataPromise = fetch(
     `${baseUrl}/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${apiKey}`
   )
     .then((response) => response.json())
@@ -23,15 +22,12 @@ function getVideoData() {
       channel = data.items[0].snippet.channelTitle;
       title = data.items[0].snippet.title;
       description = data.items[0].snippet.description;
-      console.log("Channel:", channel);
-      console.log("Title:", title);
-      console.log("Description:", description);
     })
     .catch((error) => {
       console.error("Error fetching video data:", error);
     });
 
-  fetch(
+  const commentsPromise = fetch(
     `${baseUrl}/commentThreads?part=snippet&videoId=${videoId}&maxResults=10&key=${apiKey}`
   )
     .then((response) => response.json())
@@ -44,7 +40,6 @@ function getVideoData() {
           publishedAt: item.snippet.topLevelComment.snippet.publishedAt,
         };
       });
-      console.log("Comments:", comments);
     })
     .catch((error) => {
       console.error("Error fetching comments:", error);
@@ -52,15 +47,19 @@ function getVideoData() {
 
   // TODO: iterate through replies
   // fetch(`${baseUrl}/comments?part=snippet&parentId=${item.id}&key=${apiKey}`)
-
-  console.log("Sending video info to background script NEW");
-  chrome.runtime.sendMessage({
-    action: "sendVideoInfo",
-    channel: channel,
-    title: title,
-    description: description,
-    comments: comments,
-  });
+  Promise.all([videoDataPromise, commentsPromise])
+    .then(() => {
+      chrome.runtime.sendMessage({
+        action: "sendVideoInfo",
+        channel: channel,
+        title: title,
+        description: description,
+        comments: comments,
+      });
+    })
+    .catch((error) => {
+      console.error("Error in fetching video data or comments:", error);
+    });
 }
 
 // DOM scraping
