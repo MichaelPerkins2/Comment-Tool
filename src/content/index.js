@@ -1,6 +1,121 @@
 console.log("Content script running!");
 
+window.addEventListener("load", () => {
+  setTimeout(getVideoData, 3000);
+});
 
+function getVideoData() {
+  const apiKey = process.env.REACT_APP_YOUTUBE_API_KEY;
+  const baseUrl = "https://www.googleapis.com/youtube/v3";
+
+  const videoId = new URLSearchParams(window.location.search).get("v");
+  console.log("Video ID:", videoId);
+  let channel = "";
+  let title = "";
+  let description = "";
+  let comments = [];
+
+  fetch(
+    `${baseUrl}/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${apiKey}`
+  )
+    .then((response) => response.json())
+    .then((data) => {
+      channel = data.items[0].snippet.channelTitle;
+      title = data.items[0].snippet.title;
+      description = data.items[0].snippet.description;
+      console.log("Channel:", channel);
+      console.log("Title:", title);
+      console.log("Description:", description);
+    })
+    .catch((error) => {
+      console.error("Error fetching video data:", error);
+    });
+
+  fetch(
+    `${baseUrl}/commentThreads?part=snippet&videoId=${videoId}&maxResults=10&key=${apiKey}`
+  )
+    .then((response) => response.json())
+    .then((data) => {
+      comments = data.items.map((item) => {
+        return {
+          text: item.snippet.topLevelComment.snippet.textDisplay,
+          author: item.snippet.topLevelComment.snippet.authorDisplayName,
+          likeCount: item.snippet.topLevelComment.snippet.likeCount,
+          publishedAt: item.snippet.topLevelComment.snippet.publishedAt,
+        };
+      });
+      console.log("Comments:", comments);
+    })
+    .catch((error) => {
+      console.error("Error fetching comments:", error);
+    });
+
+  // TODO: iterate through replies
+  // fetch(`${baseUrl}/comments?part=snippet&parentId=${item.id}&key=${apiKey}`)
+
+  console.log("Sending video info to background script NEW");
+  chrome.runtime.sendMessage({
+    action: "sendVideoInfo",
+    channel: channel,
+    title: title,
+    description: description,
+    comments: comments,
+  });
+}
+
+// DOM scraping
+// function getVideoInfo() {
+//   console.log("GET TEST START");
+//   getTest();
+//   const channelElement = document.querySelector(
+//     "#channel-name a.yt-simple-endpoint.style-scope.yt-formatted-string"
+//   );
+//   const channel = channelElement
+//     ? channelElement.innerText.trim()
+//     : "Channel name not found";
+//   console.log("Channel:", channel);
+
+//   const titleElement = document.querySelector(
+//     "h1.style-scope.ytd-watch-metadata"
+//   );
+//   const title = titleElement
+//     ? titleElement.innerText.trim()
+//     : "Title not found";
+//   console.log("Title:", title);
+
+//   const descriptionElement = document.querySelector(
+//     "#description-inner.style-scope.ytd-watch-metadata"
+//   );
+//   const description = descriptionElement
+//     ? descriptionElement.innerText.trim()
+//     : "Description not found";
+//   console.log("Description:", description);
+
+//   const comments = [];
+//   document
+//     .querySelectorAll(
+//       "#comments #contents.style-scope.ytd-item-section-renderer"
+//     )
+//     .forEach((comment) => {
+//       comments.push({
+//         text: comment.innerText,
+//         author:
+//           comment.closest("ytd-comment-renderer")?.querySelector("#author-text")
+//             ?.innerText || "Unknown",
+//       });
+//     });
+//   console.log("Comments:", comments);
+
+//   chrome.runtime.sendMessage({
+//     action: "sendVideoInfo",
+//     channel: channel,
+//     title: title,
+//     description: description,
+//     comments: comments,
+//   });
+
+//   console.log("Sending video info");
+// }
 
 // Inject response into the page
 // chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
