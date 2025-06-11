@@ -35,30 +35,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       Text: ${comment.text}
       Likes: ${comment.likeCount}
       Date: ${comment.publishedAt}
+      Replies: ${comment.replies ? comment.replies.map(reply => reply.text).join(",\n") : "No replies"}
       `;
     }).join("\n");
+
+    console.log("BACKGROUND: video info", {
+      channel: cachedChannel,
+      title: cachedTitle,
+      description: cachedDescription,
+      comments: cachedComments,
+      replies: cachedComments.map(comment => comment.replies),
+      conversationContext: conversationContext,
+    });
       
     // Set the conversation context
-    const formattedPrompt = `This is a conversation in which your role is to answer questions about comments from a YouTube video for the user with whom you will communicate. If you have not received the comments to analyze, inform the user.
+    const formattedPrompt = `This is a conversation in which your role is to answer questions about
+    comments from a YouTube video for a user. Summarize the comments as concisely as possible. Search 
+    for and relate useful insights. Relay relevant information directly from the comments, though you 
+    should not directly quote or cite them, unless the user's query is answered specifically by a comment
+    (or the user asks you to). You should not add your own reasoning or conjecture or hallucinations.
 
       YouTube video channel: ${cachedChannel}
       Video title: ${cachedTitle}
       Video description: ${cachedDescription}
       Video comments to analyze: ${formattedComments}
 
-      Previous conversation:
+      Previous conversation (past 6 messages):
       ${conversationContext}
       
       USER: ${query}
-      AI (you):`;
-
-    console.log("BACKGROUND: video info", {
-      channel: cachedChannel,
-      title: cachedTitle,
-      description: cachedDescription,
-      comments: formattedComments,
-      conversationContext: conversationContext,
-    })
+      YOU:`;
 
     fetch(API_URL, {
       method: "POST",

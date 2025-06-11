@@ -28,22 +28,25 @@ function getVideoData() {
     });
 
   const commentsPromise = fetch(
-    `${baseUrl}/commentThreads?part=snippet&videoId=${videoId}&maxResults=10&key=${apiKey}`
+    `${baseUrl}/commentThreads?part=snippet,replies&videoId=${videoId}&maxResults=100&order=relevance&key=${apiKey}`
   )
     .then((response) => response.json())
     .then((data) => {
       comments = data.items.map((item) => {
         return {
           text: item.snippet.topLevelComment.snippet.textDisplay,
+          replies: item.replies?.comments || [],
           author: item.snippet.topLevelComment.snippet.authorDisplayName,
           likeCount: item.snippet.topLevelComment.snippet.likeCount,
           publishedAt: item.snippet.topLevelComment.snippet.publishedAt,
         };
       });
+      console.log("CONTENT, comments: ", comments);
     })
     .catch((error) => {
       console.error("Error fetching comments:", error);
     });
+
 
   // TODO: iterate through replies
   // fetch(`${baseUrl}/comments?part=snippet&parentId=${item.id}&key=${apiKey}`)

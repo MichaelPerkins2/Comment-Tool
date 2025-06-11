@@ -13,42 +13,49 @@ const App = () => {
     const newUserMessage = { role: "user", text: query };
     console.log("New user message:", newUserMessage);
 
-    chrome.runtime.sendMessage({ action: "queryLLM", query, chatHistory: chatHistory }, (response) => {
-      console.log("Response received:", response);
+    chrome.runtime.sendMessage(
+      { action: "queryLLM", query, chatHistory: chatHistory },
+      (response) => {
+        console.log("Response received:", response);
 
-      if (chrome.runtime.lastError) {
-        console.error("Error:", chrome.runtime.lastError.message);
-        setMessage("Error: " + chrome.runtime.lastError.message);
-        return;
+        if (chrome.runtime.lastError) {
+          console.error("Error:", chrome.runtime.lastError.message);
+          setMessage("Error: " + chrome.runtime.lastError.message);
+          return;
+        }
+
+        if (!response || !response.success) {
+          console.error("Error fetching response:", response.error);
+          setMessage("Error: " + response.error);
+          return;
+        }
+
+        if (response.success) {
+          console.log("Success:", response.response);
+
+          const newAiMessage = { role: "ai", text: response.response };
+          setChatHistory((prevHistory) => {
+            const updatedHistory = [
+              ...prevHistory,
+              newUserMessage,
+              newAiMessage,
+            ];
+            // const updatedHistory = [...chatHistory, newUserMessage, newAiMessage];
+            // setChatHistory(updatedHistory);
+            chrome.storage.local.set({ chatHistory: updatedHistory });
+            return updatedHistory;
+          });
+
+          // setQueryHistory((prev) => [
+          //   ...prev,
+          //   { query, response: response.response },
+          // ]);
+          setQuery("");
+        } else {
+          console.error("Error:", error);
+        }
       }
-
-      if (!response || !response.success) {
-        console.error("Error fetching response:", response.error);
-        setMessage("Error: " + response.error);
-        return;
-      }
-
-      if (response.success) {
-        console.log("Success:", response.response);
-
-        const newAiMessage = { role: "ai", text: response.response };
-        setChatHistory((prevHistory) => {
-          const updatedHistory = [...prevHistory, newUserMessage, newAiMessage];
-          // const updatedHistory = [...chatHistory, newUserMessage, newAiMessage];
-          // setChatHistory(updatedHistory);
-          chrome.storage.local.set({ chatHistory: updatedHistory });
-          return updatedHistory;
-        });
-
-        // setQueryHistory((prev) => [
-        //   ...prev,
-        //   { query, response: response.response },
-        // ]);
-        setQuery("");
-      } else {
-        console.error("Error:", error);
-      }
-    });
+    );
   };
 
   // Listen for messages from the background script - receive LLM response
@@ -98,42 +105,44 @@ const App = () => {
         backgroundColor: "#101010",
       }}
     >
-    {/* Title */}
+      {/* Title */}
       <h1 style={{ fontSize: "20px", marginBottom: "10px" }}>Comment Tool</h1>
       <h3 style={{ fontSize: "15px", marginBottom: "15px" }}>
         Search the comments for answers to your questions
       </h3>
 
       {/* Conversation */}
-      <div
-        className="conversation-container"
-        style={{
-          marginTop: "20px",
-          padding: "10px",
-          backgroundColor: "#181818",
-          borderRadius: "6px",
-        }}
-      >
-        {chatHistory.map((entry, index) => (
-          <div key={index}>
-            <p
-              style={{
-                textAlign: entry.role === "user" ? "right" : "left",
-                width: "fit-content",
-                maxWidth: "80%",
-                borderRadius: "6px",
-                backgroundColor: "#262626",
-                padding: "0.75em",
-                marginLeft: entry.role === "user" ? "auto" : "0",
-                display: "block",
-              }}
-            >
-              {entry.text}
-            </p>
-          </div>
-        ))}
-      </div>
-      
+      {chatHistory.length > 0 && (
+        <div
+          className="conversation-container"
+          style={{
+            marginTop: "20px",
+            padding: "10px",
+            backgroundColor: "#181818",
+            borderRadius: "6px",
+          }}
+        >
+          {chatHistory.map((entry, index) => (
+            <div key={index}>
+              <p
+                style={{
+                  textAlign: entry.role === "user" ? "right" : "left",
+                  width: "fit-content",
+                  maxWidth: "80%",
+                  borderRadius: "6px",
+                  backgroundColor: "#262626",
+                  padding: "0.75em",
+                  marginLeft: entry.role === "user" ? "auto" : "0",
+                  display: "block",
+                }}
+              >
+                {entry.text}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Input Search Field */}
       <textarea
         placeholder="Search comments..."
@@ -187,7 +196,8 @@ const App = () => {
       </button>
 
       {/* Clear History Button */}
-      <button style={{ 
+      <button
+        style={{
           width: "30%",
           padding: "5px",
           backgroundColor: "#8b0000",
@@ -201,7 +211,10 @@ const App = () => {
         onClick={() => {
           chrome.storage.local.remove("chatHistory");
           setChatHistory([]);
-        }}>Clear History</button>
+        }}
+      >
+        Clear History
+      </button>
 
       {message && (
         <p
